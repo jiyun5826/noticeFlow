@@ -9,6 +9,8 @@ def parse_notices(xml_bytes: bytes) -> list[dict]:
     root = ET.fromstring(xml_bytes)
 
     items = root.findall("./channel/item")
+    if not items:
+        raise ValueError("RSS에서 공지 항목을 찾을 수 없습니다")
 
     for item in items:
         link = item.findtext("link") or ""

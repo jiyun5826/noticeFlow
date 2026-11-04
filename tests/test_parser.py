@@ -44,3 +44,10 @@ def test_parse_notices_rejects_wrong_board():
 
     with pytest.raises(ValueError, match="일반공지 링크 형식"):
         parse_notices(invalid_xml)
+
+
+def test_parse_notices_rejects_feed_without_items():
+    empty_feed = b"<rss><channel></channel></rss>"
+
+    with pytest.raises(ValueError, match="공지 항목"):
+        parse_notices(empty_feed)
