@@ -1,25 +1,7 @@
 import requests
 import xml.etree.ElementTree as ET
 from urllib.parse import parse_qs, urlparse
-from db import init_db, save_notices
-
-
-response = requests.get(
-    "https://www.uos.ac.kr/rss/gBoard.do",
-    headers={
-        "User-Agent": "NoticeFlow/0.1",
-        "Accept": "application/rss+xml, application/xml, text/xml, */*",
-    },
-    timeout=10,
-)
-
-print(response.status_code)
-print(len(response.text))
-
-print(response.url)
-print(response.history)
-print(response.headers.get("Content-Type"))
-print(response.encoding)
+from src.db import init_db, save_notices
 
 def parse_notices(xml_bytes: bytes) -> list[dict]:
     notices = []
@@ -48,17 +30,47 @@ def parse_notices(xml_bytes: bytes) -> list[dict]:
 
     return notices
 
+def main() -> None:
+    response = requests.get(
+        "https://www.uos.ac.kr/rss/gBoard.do",
+        headers={
+            "User-Agent": "NoticeFlow/0.1",
+            "Accept": "application/rss+xml, application/xml, text/xml, */*",
+        },
+        timeout=10,
+    )
 
-response.raise_for_status()
-notices = parse_notices(response.content)
+    print(response.status_code)
+    print(len(response.text))
+
+    print(response.url)
+    print(response.history)
+    print(response.headers.get("Content-Type"))
+    print(response.encoding)
+
+    response.raise_for_status()
+    notices = parse_notices(response.content)
+
+    db_path = "noticeflow.db"
+    init_db(db_path)
+
+    inserted_count = save_notices(db_path, notices)
+
+    print("수집 건수:", len(notices))
+    print("신규 저장 건수:", inserted_count)
 
 
-db_path = "noticeflow.db"
-init_db(db_path)
+if __name__ == "__main__":
+    main()
 
-inserted_count = save_notices(db_path, notices)
 
-print("수집 건수:", len(notices))
-print("신규 저장 건수:", inserted_count)
+
+
+
+
+
+
+
+
 
     
