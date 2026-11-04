@@ -1,6 +1,7 @@
 import requests
 import xml.etree.ElementTree as ET
 from urllib.parse import parse_qs, urlparse
+from db import init_db, save_notices
 
 
 response = requests.get(
@@ -50,6 +51,14 @@ def parse_notices(xml_bytes: bytes) -> list[dict]:
 
 response.raise_for_status()
 notices = parse_notices(response.content)
-print(notices[:3])
+
+
+db_path = "noticeflow.db"
+init_db(db_path)
+
+inserted_count = save_notices(db_path, notices)
+
+print("수집 건수:", len(notices))
+print("신규 저장 건수:", inserted_count)
 
     
