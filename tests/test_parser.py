@@ -18,8 +18,9 @@ RSS_XML = """
 
 
 def test_parse_notices_extracts_normalized_fields():
-    notices = parse_notices(RSS_XML)
+    notices, rejected = parse_notices(RSS_XML)
 
+    assert rejected == []
     assert notices == [
         {
             "source": "uos_general",
@@ -44,7 +45,7 @@ def test_parse_notices_rejects_wrong_board():
     </rss>
     """.strip().encode("utf-8")
 
-    with pytest.raises(ValueError, match="일반공지 링크 형식"):
+    with pytest.raises(ValueError, match="공지가 없습니다"):
         parse_notices(invalid_xml)
 
 
@@ -53,3 +54,59 @@ def test_parse_notices_rejects_feed_without_items():
 
     with pytest.raises(ValueError, match="공지 항목"):
         parse_notices(empty_feed)
+
+
+def test_parse_notices_skips_invalid_item_and_keeps_others():
+    xml = """<?xml version="1.0" encoding="utf-8"?>
+    <rss version="2.0">
+      <channel>
+        <item>
+          <title>정상 공지 1</title>
+          <link>https://www.uos.ac.kr/korNotice/view.do?list_id=FA1&amp;seq=100</link>
+          <pubDate>2026-11-04 10:00:00</pubDate>
+        </item>
+        <item>
+          <title>seq 없는 공지</title>
+          <link>https://www.uos.ac.kr/korNotice/view.do?list_id=FA1</link>
+          <pubDate>2026-11-04 11:00:00</pubDate>
+        </item>
+        <item>
+          <title>정상 공지 2</title>
+          <link>https://www.uos.ac.kr/korNotice/view.do?list_id=FA1&amp;seq=102</link>
+          <pubDate>2026-11-04 12:00:00</pubDate>
+        </item>
+      </channel>
+    </rss>""".encode("utf-8")
+
+    notices, rejected = parse_notices(xml)
+
+    # 정상 공지 2건만 남아야 한다
+    assert [n["source_id"] for n in notices] == ["100", "102"]
+
+    # 제외된 공지 1건이 이유와 함께 기록되어야 한다
+    assert len(rejected) == 1
+    assert rejected[0]["title"] == "seq 없는 공지"
+    assert rejected[0]["url"] == "https://www.uos.ac.kr/korNotice/view.do?list_id=FA1"
+    assert rejected[0]["reason"]  # 이유 문자열이 비어 있지 않으면 통과
+
+def test_parse_notices_skips_item_without_title():
+    xml = """<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>   </title>
+      <link>https://www.uos.ac.kr/korNotice/view.do?list_id=FA1&amp;seq=200</link>
+    </item>
+    <item>
+      <title>정상 공지</title>
+      <link>https://www.uos.ac.kr/korNotice/view.do?list_id=FA1&amp;seq=201</link>
+    </item>
+  </channel>
+</rss>""".encode("utf-8")
+
+    notices, rejected = parse_notices(xml)
+
+    assert [n["source_id"] for n in notices] == ["201"]
+    assert len(rejected) == 1
+    assert rejected[0]["reason"] == "공지 제목이 없습니다."
+
