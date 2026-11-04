@@ -20,51 +20,56 @@
 
 - **이름(가칭):** NoticeFlow
 - **목적:** 큐레이터스 AI 자동화 개발자 인턴 지원을 위한 3일 학습·실행 프로젝트. 단순 크롤러가 아니라 반복적인 공지 확인 업무를 자동화하고 **중복·부분 실패·재시도** 문제를 검증한다.
-- **핵심 업무 흐름:** 공개 학교 공지 수집 → 정규화 → SQLite로 중복 제거·상태 관리 → Google Sheets 누적 → 신규 공고만 Slack 알림 → n8n 정기 실행 및 실패 알림.
-- **예정 기술:** Python, requests, BeautifulSoup, SQLite, pytest, Google Sheets API, Slack Incoming Webhook, n8n. 미구현 기술을 구현 완료로 취급하지 않는다.
+- **핵심 업무 흐름:** 공개 학교 공지 수집 → 정규화 → SQLite로 중복 제거·상태 관리 → Google Sheets 누적 → 신규 공고만 Discord 알림 → n8n 정기 실행 및 실패 알림.
+- **예정 기술:** Python, requests, `xml.etree.ElementTree`(RSS 파싱, BeautifulSoup은 현재 미사용), SQLite, pytest, Google Sheets API, Discord 웹훅, n8n. 미구현 기술을 구현 완료로 취급하지 않는다.
 - **범위:** Day 1에는 서울시립대 **일반공지 한 게시판**을 우선 완성한다. 학사공지·컴퓨터과학부 공지와 외부 사이트는 후속 P1이다.
 - **개발 환경:** Windows, PowerShell, VS Code, Python 가상환경 `.venv`.
 - **로컬 경로(사용자 진술):** `C:\Project\noficeFlow` (철자는 `noficeFlow`로 보고됨. 실제 현재 디렉터리를 우선 확인).
 - **GitHub(사용자 진술):** `https://github.com/jiyun5826/noticeFlow.git` (연결 완료라고 사용자 보고. 원격·푸시 여부는 직접 확인 전 단정하지 않는다).
 - **Notion 기획 문서:** https://app.notion.com/p/40e78ad570dd80f3ae36db1960c7fb07
 
-## 3. 현재까지 직접 확인된 사항 vs 미확인 사항
+## 3. 현재 진행 상태 — 2026-11-04 Day 1 종료 기준
 
-### 사용자가 브라우저에서 직접 확인
+> 아래는 2026-11-04 저녁 저장소·DB·테스트를 직접 확인한 결과다. 이전 버전의 "HTTP 400 디버깅" 내용은 해결되어 대체했다. 세부 근거는 Notion 개발 기록(https://app.notion.com/p/40e78ad570dd816d8f2cdf87ea20f7e2)에 있다.
 
-- 서울시립대 일반공지의 **공지 제목이 `Network > Doc > Response` HTML 안에 존재**한다.
-- 개발자 도구 화면에서 공지 목록이 대략 `ul.brd-lstp1 > li`로 구성되고, 제목 링크는 `.ti a`, 날짜 등 메타데이터는 `.da span`에 있는 것으로 관찰했다. 실제 파서는 현재 HTML을 다시 확인하며 작성해야 한다.
-- 제목 링크 형태 예시: `javascript:fnView('1', '31409');`.
-- 해당 게시글을 클릭했을 때 실제 이동한 URL:
-  `https://www.uos.ac.kr/korNotice/view.do?list_id=FA1&seq=31409&sort=3&pageIndex=1&searchCnd=&searchWrd=&cate_id=&viewAuth=Y&writeAuth=N&board_list_num=10&lpageCount=12&menuid=2000005009002000000`
-- 다음 **최소 URL**도 브라우저에서 로그인 없이 같은 게시글이 열렸다:
-  `https://www.uos.ac.kr/korNotice/view.do?list_id=FA1&seq=31409`
-- 따라서 `list_id=FA1`은 게시판 식별자, `seq=31409`는 게시글 식별자로 **유력**하다. 여러 게시글에서 일관성 검증 전에는 보장으로 단정하지 않는다.
+### 완료·검증됨
 
-### 사용자가 Python에서 실행한 결과
+- **수집:** 공식 RSS `https://www.uos.ac.kr/rss/gBoard.do`에서 실제 공지 24건 수집 (HTTP 200, `text/xml; charset=utf-8`).
+- **HTTP 400 원인(해결):** 초기 요청은 400 `Access Blocked`(393바이트, 리다이렉트 없음). Accept만 바꾸면 400, User-Agent를 바꾸면 200 → 기본 `python-requests` User-Agent 차단 가능성이 높음(서버 규칙은 미확인). 브라우저 위장 없이 `User-Agent: NoticeFlow/0.1` 사용.
+- **파싱:** `list_id=FA1` 검증, `seq`를 `source_id`로 사용. 제목 없음·링크 형식 불일치 항목은 **해당 항목만 제외**하고 이유와 함께 `rejected`로 반환. 항목 0건·유효 항목 0건이면 전체 실패. `parse_notices()`는 `(notices, rejected)`를 반환하는 순수 함수.
+- **게시일:** `parse_published_at()`이 `2026-11-04T16:51:35+09:00` 형식으로 정규화. 잘못된 형식·빈 값은 `None`(가짜 날짜 생성 금지), 날짜만 이상하면 공지는 유지.
+- **중복 제거:** `UNIQUE(source, source_id)` + `ON CONFLICT DO NOTHING`. 실제 RSS 연속 2회 실행 시 신규 24건 → 0건 확인.
+- **테스트:** pytest 12개 통과 (Windows, `.venv`, Python 3.13.2, pytest 9.2.0).
+- **문서·설정:** README(설치·실행·테스트·한계), `.env.example`(`DISCORD_WEBHOOK_URL=`), `requirements.txt` UTF-8 재인코딩.
+- **Discord 웹훅:** 생성 및 PowerShell 수동 전송 테스트 성공. URL은 `.env`에만 보관(저장소에는 `.env.example`만 추적됨).
+- 실행: `python -m src.main` (`python src/main.py`는 import 경로 때문에 동작하지 않음). 테스트: `python -m pytest -v`.
 
-- `requests` 기반 `main.py`를 직접 작성해 실행했다.
-- 현재까지 보고된 실행 결과: **HTTP 상태 코드 `400`, 응답 본문 길이 `393`**.
-- 대상 목록 URL로 사용한 주소:
-  `https://www.uos.ac.kr/korNotice/list.do?list_id=FA1&menuid=2000005009002000000&identified=success&`
-- **400의 정확한 원인은 아직 확인되지 않았다.** HTML 응답 본문, 최종 `response.url`, `response.history`, 요청 헤더 등을 보고 원인 범위를 좁혀야 한다.
-- 이 400은 목록 요청 결과다. 개별 게시글의 최소 URL은 **브라우저에서** 열렸다는 사실과 구분한다.
-- `python main.py`는 루트에 파일이 없어 실패했으며, 실제 실행 명령은 `python src/main.py`였다. 저장소 파일 위치는 Claude가 읽어 다시 확인한다.
-- `.venv` 설정과 GitHub 연결을 완료했다고 사용자가 밝혔다. `requirements.txt` 생성 이유도 학습했다.
+### 구현됐지만 미연결·미완
 
-### 아직 달성하지 못한 것
+- `src/classifier.py`(키워드 분류)와 테스트 3개는 있으나 `main()`에 연결되지 않음.
+- `description`은 파싱하지만 DB에 저장하지 않음.
+- 제외 항목·실행 결과는 콘솔 출력뿐, 파일·DB 기록 없음.
+- `first_seen_at`은 SQLite `CURRENT_TIMESTAMP`(시간대 표기 없는 UTC). `published_at`과 표기 방식이 다름.
+- `main()`에 400 디버깅용 `print`(status, url, history 등)가 남아 있음.
 
-- Python으로 실제 공지 목록 HTML을 성공적으로 받아오기
-- BeautifulSoup으로 실제 공지 제목·ID·게시일 파싱 및 정규화
-- 실제 공지의 SQLite 저장과 반복 실행 중복 제거 검증
-- 실제 수집 시간·수작업 시간 측정
-- Sheets, Slack, n8n 연결 및 복구 테스트
+### Day 1에 발견한 설계 이슈 (Day 2 설계에 반영할 것)
+
+1. **"DB에 처음 저장" ≠ "새로 게시".** 두 번째 실행에서 신규 저장 14건 중 실제 신규 게시는 4건. RSS에 상단 고정 공지 등 오래된 공지가 섞이고 구성이 시간에 따라 바뀜(31107은 고정 공지로 확인, 31654는 고정 아님·원인 미확인). → 알림은 **게시일 기준 최근 N일**로 판단하기로 결정(N 미정, 미구현). Notion "개발 기록 — Day 1"의 기존 초기 알림 정책("연동 이후 새로 삽입된 공지만 알림")은 이 발견과 충돌하므로 재검토 필요.
+2. **클라이언트 실패 ≠ 전송 실패.** PowerShell 5.1 `Invoke-WebRequest`가 응답 파싱 단계에서 에러로 끝났지만 Discord에는 메시지가 실제로 전송됨. → 재시도 시 "요청 전 실패"와 "응답 불명"을 구분해야 중복 알림을 줄일 수 있음.
+
+### 아직 하지 않은 것
+
+- 실행 기록(로그 파일, `collection_runs` 테이블)
+- 알림 판단 기준 구현, 초기 알림 정책 확정
+- Python에서 Discord 발송, 발송 상태(`PENDING`/`SENT`/`FAILED`)·재시도
+- Google Sheets, n8n
+- fixture 통제 실험, 실행 시간 5회 이상 측정, 수작업 시간 측정
 
 > 이전 대화에서 언급된 별도 스타터 ZIP의 오프라인 테스트 결과(합성 HTML 6개 테스트 통과 등)는 **개발자가 직접 구현 중인 저장소의 결과가 아니다.** 사용자 저장소의 완료 성과로 기록하거나 복사하지 않는다.
 
 ## 4. 3일 실행 계획 — 수정 반영본
 
-### Day 1 (11/4): 실제 학교 일반공지 수집기
+### Day 1 (11/4): 실제 학교 일반공지 수집기 — ✅ 완료 (HTML 대신 공식 RSS로 수집, 결과는 3번 섹션)
 
 1. 현재 `HTTP 400` 오류 원인 조사 및 Python에서 공개 일반공지 HTML 접근 확인
 2. 실제 HTML 구조 관찰 및 필드 추출: `source`, `source_id`, `title`, `canonical_url`, `published_at`(확인된 경우만), `collected_at`
@@ -77,7 +82,7 @@
 ### Day 2 (11/5): 외부 API와 실행 자동화
 
 1. Google Sheets에 신규 공고 누적(안전한 재시도 고려)
-2. Slack Incoming Webhook 신규 공고 알림
+2. Discord 웹훅 신규 공고 알림
 3. `PENDING / SENT / FAILED` 등 발송 상태와 실패 원인·재시도 관리
 4. **n8n은 얇은 오케스트레이션 레이어**: Schedule Trigger로 Python 실행을 시작하고 실패 알림을 연계. 수집·정규화·중복 제거·전송 상태 로직은 Python에 남겨 pytest로 검증 가능하게 유지
 5. n8n의 실행 위치(로컬 설치, Docker, Cloud 등)에 따라 Python 호출 방식이 달라지므로 **실제 실행 환경을 확인한 후 설계**
@@ -86,7 +91,7 @@
 
 1. **fixture 기반** 기존 공고 100건을 3회 반복 수집해 중복 저장·추가 알림 수 측정
 2. **fixture 기반** 기존 100건 + 신규 20건을 입력해 신규 탐지·누락·오탐 측정
-3. HTTP 500/타임아웃, Slack 발송 실패를 모의해 재처리 및 상태 기록 확인
+3. HTTP 500/타임아웃, Discord 발송 실패를 모의해 재처리 및 상태 기록 확인
 4. 일반공지 수집 5회 이상 실행해 평균·최대 시간과 건수 기록
 5. 사람이 직접 확인하는 시간과 자동화 후 실제 사람의 관여 시간을 구분하여 측정
 6. README에 구조·의사결정·실험 조건·실측값·한계 기록, n8n 워크플로 JSON/스크린샷/테스트 결과 첨부
@@ -99,13 +104,13 @@
 | --- | --- | --- |
 | 중복 알림 | 0건 | **fixture 기반** 동일 100건 × 3회 반복 |
 | 신규 공고 탐지 | 통제 실험에서 100% | **fixture 기반** 기존 100건+신규 20건 |
-| 실패 복구 | 재시도 후 정상 복구 | HTTP 500·타임아웃 및 Slack 실패 주입 |
+| 실패 복구 | 재시도 후 정상 복구 | HTTP 500·타임아웃 및 Discord 실패 주입 |
 | 수동 작업 시간 | 80% 이상 절감 목표(미검증) | 동일 범위 수동·자동 비교, 초기 설정·유지보수 시간 구분 |
 | 수집 처리 시간 | 실측, 사전 목표 없음 | 일반공지 1곳 5회 이상 실행 |
-| 알림 지연 | 실측, 사전 목표 없음 | 신규 감지 시각부터 Slack 발송 성공까지 |
+| 알림 지연 | 실측, 사전 목표 없음 | 신규 감지 시각부터 Discord 발송 성공까지 |
 
 - 합성 fixture의 통제 실험 100%를 실제 운영의 완전 탐지로 주장하지 않는다.
-- Slack 발송 성공 후 응답 유실 등 상황에서는 정확히 한 번 전송을 보장하기 어렵다는 한계를 명시한다.
+- Discord 발송 성공 후 응답 유실 등 상황에서는 정확히 한 번 전송을 보장하기 어렵다는 한계를 명시한다.
 - 결과값은 환경, 데이터 건수, 실행 횟수, 코드 버전과 함께 기록한다.
 - 목표 미달성은 조작하거나 숨기지 않고 원인을 분석해 기록한다.
 
@@ -115,22 +120,22 @@
 - HTML 파싱 로직은 가능한 범위에서 순수 함수로 분리해 fixture로 테스트한다.
 - 중복 제거는 애플리케이션 사전 조회만 의존하지 말고 DB의 고유 제약을 검토한다.
 - 최초 수집 시각은 재수집 때 변경하지 않는다.
-- DB 기록과 Google Sheets·Slack 외부 호출은 원자적 트랜잭션이 아니므로 각 전달 상태를 기록한다.
+- DB 기록과 Google Sheets·Discord 외부 호출은 원자적 트랜잭션이 아니므로 각 전달 상태를 기록한다.
 - 비밀값은 환경변수/별도 비밀 파일에 관리하고 `.env`, `.venv`, 로컬 DB와 토큰을 커밋하지 않는다. `.gitignore`를 확인한다.
 - 첫 실행 때 과거 공고 알림이 한꺼번에 발송되지 않도록 초기 가져오기 정책을 정한다.
 - 기술은 필요에 따라 도입한다. LLM·추가 사이트·대시보드는 3일 필수가 아니다.
 
-## 7. 당장 이어서 할 일: HTTP 400 디버깅
+## 7. 당장 이어서 할 일: Day 2
 
-**Claude는 코드를 수정하지 말고 먼저 읽기만 한다.** 사용자의 `src/main.py`, 실행 명령, 실제 요청 URL 및 관련 설정을 확인하라.
+Day 1은 완료됐다. 이어서 Day 2를 아래 순서로 진행한다. 코칭 원칙(1번)은 그대로 적용한다. 사용자가 직접 구현하고 Claude는 읽기·리뷰·안내를 우선한다.
 
-사용자가 아직 제공하지 않은 출력은 다음과 같다.
+1. **실행 기록:** 제외 항목 상세(링크·제목·이유)는 `logging`으로 로그 파일에, 실행 요약(실행 시각, 수집·신규·중복·제외 건수, 소요 시간, 오류)은 SQLite `collection_runs` 테이블에. 파서는 기록하지 않고 `main()`이 기록한다. 디버그 `print` 정리.
+2. **알림 판단 기준:** 게시일 기준 최근 N일 공지만 알림. N과 초기 알림 정책을 사용자와 확정. `first_seen_at` 표기 정리 여부도 이때 결정.
+3. **Discord 발송:** `.env`의 `DISCORD_WEBHOOK_URL`을 읽어 `requests.post`(본문 `{"content": ...}`). 성공 응답 204, 메시지당 2000자 제한, 과다 호출 시 429. 발송 상태(`PENDING`/`SENT`/`FAILED`), 재시도 횟수, 마지막 오류 기록. 응답 불명 상황의 중복 가능성(3번 섹션 이슈 2)을 한계로 명시.
+4. **관심 공지 분류 연결:** `classifier.py`를 파이프라인에 연결하고 `description`·분류 결과 저장 여부 결정.
+5. **Google Sheets, n8n:** 위가 안정된 뒤 연결. n8n 실행 위치(로컬/Docker/Cloud)를 먼저 확인한다.
 
-- `response.url` — 최종 도착 URL
-- `response.text` — 짧은(현재 393자) 오류 응답 본문
-- `response.history` — 리다이렉트 이력
-
-위 세 항목을 안전하게 확인할 수 있도록 사용자에게 **다음 행동 하나**를 안내한다. 이후 결과를 바탕으로 가설을 검증한다. 처음부터 임의의 User-Agent·쿠키 추가나 Selenium 전환을 정답으로 단정하지 않는다. 브라우저에서는 열리는데 Python은 400인 차이를 근거로 분석한다.
+웹훅 URL·토큰은 출력·커밋하지 않는다. 사용자가 스크린샷을 공유할 때 URL이 보이면 즉시 알리고 재발급을 안내한다.
 
 ## 8. 포트폴리오 기록 방식
 
@@ -152,6 +157,7 @@
 
 ## 9. Claude 응답 스타일
 
+- 사용자는 다음 행동을 **단계별로 자세히** 안내받기를 원한다: 필요한 개념 → 수정할 파일·위치 → 힌트나 뼈대 코드 → 실행 명령 → 기대 결과·예상 에러. 고급자 대상처럼 요약만 하지 않는다.
 - 한국어, 간결하고 친절하게. 사용자는 CS 전공자로서 구현의 근거와 원리까지 배우고 싶어 한다.
 - 앞서 확인한 단계는 반복시키지 않는다.
 - 매 응답에 **지금 단계의 목표와 단 하나의 다음 행동**을 명확히 한다.
