@@ -2,6 +2,7 @@ import requests
 import xml.etree.ElementTree as ET
 from urllib.parse import parse_qs, urlparse
 from src.db import init_db, save_notices
+from time import perf_counter
 
 def parse_notices(xml_bytes: bytes) -> list[dict]:
     notices = []
@@ -33,6 +34,8 @@ def parse_notices(xml_bytes: bytes) -> list[dict]:
     return notices
 
 def main() -> None:
+    started_at = perf_counter()
+
     response = requests.get(
         "https://www.uos.ac.kr/rss/gBoard.do",
         headers={
@@ -60,6 +63,9 @@ def main() -> None:
 
     print("수집 건수:", len(notices))
     print("신규 저장 건수:", inserted_count)
+
+    elapsed_seconds = perf_counter() - started_at
+    print(f"실행시간: {elapsed_seconds:.3f}초")
 
 
 if __name__ == "__main__":
