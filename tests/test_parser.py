@@ -1,4 +1,4 @@
-from src.main import parse_notices
+from src.main import parse_notices, parse_published_at
 import pytest
 
 
@@ -28,7 +28,7 @@ def test_parse_notices_extracts_normalized_fields():
             "title": "테스트 일반공지",
             "description": "<p>AI 부트캠프 참가 안내</p>",
             "url": "https://www.uos.ac.kr/korNotice/view.do?list_id=FA1&seq=12345&sort=7",
-            "published_at": "2026-11-04 12:30:00",
+            "published_at": "2026-11-04T12:30:00+09:00",
         }
     ]
 
@@ -109,4 +109,16 @@ def test_parse_notices_skips_item_without_title():
     assert [n["source_id"] for n in notices] == ["201"]
     assert len(rejected) == 1
     assert rejected[0]["reason"] == "공지 제목이 없습니다."
+
+def test_parse_published_at_adds_korea_timezone():
+    assert parse_published_at("2026-11-04 16:51:35") == "2026-11-04T16:51:35+09:00"
+
+
+def test_parse_published_at_returns_none_for_invalid_date():
+    assert parse_published_at("2026-13-40 99:00:00") is None
+
+
+def test_parse_published_at_returns_none_for_missing_value():
+    assert parse_published_at(None) is None
+    assert parse_published_at("") is None
 

@@ -3,6 +3,23 @@ import xml.etree.ElementTree as ET
 from urllib.parse import parse_qs, urlparse
 from src.db import init_db, save_notices
 from time import perf_counter
+from datetime import datetime, timedelta, timezone
+
+KST = timezone(timedelta(hours=9))
+
+def parse_published_at(text: str | None) -> str | None:
+    if text is None or text == "":
+        return None
+
+
+    try:
+        published_at = datetime.strptime(text.strip(), "%Y-%m-%d %H:%M:%S")
+    
+    except ValueError:
+        return None
+
+    return published_at.replace(tzinfo=KST).isoformat()
+    
 
 def parse_notices(xml_bytes: bytes) -> tuple[list[dict], list[dict]]:
     notices = []
@@ -43,7 +60,7 @@ def parse_notices(xml_bytes: bytes) -> tuple[list[dict], list[dict]]:
             "title": title,
             "description": item.findtext("description") or "",
             "url": link,
-            "published_at": item.findtext("pubDate"),
+            "published_at": parse_published_at(item.findtext("pubDate")),
         })
 
     if not notices:
