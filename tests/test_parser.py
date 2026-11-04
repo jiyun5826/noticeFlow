@@ -10,6 +10,7 @@ RSS_XML = """
       <title>테스트 일반공지</title>
       <link>https://www.uos.ac.kr/korNotice/view.do?list_id=FA1&amp;seq=12345&amp;sort=7</link>
       <pubDate>2026-11-04 12:30:00</pubDate>
+      <description><![CDATA[<p>AI 부트캠프 참가 안내</p>]]></description>
     </item>
   </channel>
 </rss>
@@ -24,6 +25,7 @@ def test_parse_notices_extracts_normalized_fields():
             "source": "uos_general",
             "source_id": "12345",
             "title": "테스트 일반공지",
+            "description": "<p>AI 부트캠프 참가 안내</p>",
             "url": "https://www.uos.ac.kr/korNotice/view.do?list_id=FA1&seq=12345&sort=7",
             "published_at": "2026-11-04 12:30:00",
         }

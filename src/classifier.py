@@ -21,3 +21,19 @@ def load_keywords(config_path: str | Path) -> list[str]:
         raise ValueError("키워드 설정의 include는 문자열 목록이어야 합니다.")
 
     return keywords
+
+def classify_notice(notice: dict, keywords: list[str]) -> dict:
+    title = notice.get("title") or ""
+    description = notice.get("description") or ""
+    searchable_text = f"{title}\n{description}"
+
+    matched_keywords = find_matching_keywords(
+        searchable_text,
+        keywords,
+    )
+
+    return {
+        **notice,
+        "is_relevant": bool(matched_keywords),
+        "matched_keywords": matched_keywords,
+    }

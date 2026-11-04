@@ -27,6 +27,7 @@ def parse_notices(xml_bytes: bytes) -> list[dict]:
             "source": "uos_general",
             "source_id": seq,
             "title": item.findtext("title"),
+            "description": item.findtext("description") or "",
             "url": item.findtext("link"),
             "published_at": item.findtext("pubDate"),
         })
