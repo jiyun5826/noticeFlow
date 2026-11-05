@@ -16,3 +16,11 @@ def decide_notify_status(
         return "PENDING"
 
     return "SKIPPED"
+
+def format_message(notice: dict) -> str:
+    if notice["published_at"] is not None:
+        normalized_published_at = datetime.fromisoformat(notice["published_at"]).strftime("%Y-%m-%d %H:%M")
+    else:
+        normalized_published_at = "미확인"
+
+    return f'제목: {notice["title"]}\n게시일: {normalized_published_at}\n링크: {notice["url"]}'

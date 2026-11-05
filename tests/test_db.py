@@ -1,5 +1,12 @@
 import sqlite3
-from src.db import init_db, save_notices, save_run
+from src.db import (
+    init_db, 
+    save_notices, 
+    save_run, 
+    get_notices_to_notify,
+    mark_notify_sent,
+    mark_notify_failed,
+)
 
 def test_save_notices_ignores_duplicates(tmp_path):
     db_path = tmp_path / "test.db"
@@ -97,3 +104,48 @@ def test_save_notices_keeps_existing_notify_status(tmp_path):
         connection.close()
 
     assert status == "SENT"
+
+def _notice(source_id, notify_status):
+    return {
+        "source": "uos_general",
+        "source_id": source_id,
+        "title": f"공지 {source_id}",
+        "url": f"https://example.com/{source_id}",
+        "published_at": "2026-11-05T10:00:00+09:00",
+        "notify_status": notify_status,
+    }
+
+
+def test_get_notices_to_notify_returns_only_pending(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path)
+    save_notices(db_path, [_notice("1", "PENDING"), _notice("2", "SKIPPED")])
+
+    targets = get_notices_to_notify(db_path)
+
+    assert [n["source_id"] for n in targets] == ["1"]
+
+
+def test_sent_notice_is_not_returned_again(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path)
+    save_notices(db_path, [_notice("1", "PENDING")])
+    notice_id = get_notices_to_notify(db_path)[0]["id"]
+
+    mark_notify_sent(db_path, notice_id)
+
+    assert get_notices_to_notify(db_path) == []
+
+
+def test_failed_notice_is_retried_until_three_attempts(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path)
+    save_notices(db_path, [_notice("1", "PENDING")])
+    notice_id = get_notices_to_notify(db_path)[0]["id"]
+
+    mark_notify_failed(db_path, notice_id, "timeout")
+    mark_notify_failed(db_path, notice_id, "timeout")
+    assert len(get_notices_to_notify(db_path)) == 1   # 2번 실패 → 아직 재시도 대상
+
+    mark_notify_failed(db_path, notice_id, "HTTP 500")
+    assert get_notices_to_notify(db_path) == []       # 3번 실패 → 더 이상 시도 안 함
