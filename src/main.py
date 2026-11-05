@@ -1,10 +1,20 @@
+import os
 import requests
 import xml.etree.ElementTree as ET
+import time
 from urllib.parse import parse_qs, urlparse
-from src.db import init_db, save_notices, save_run
+from src.db import (
+    init_db, 
+    save_notices, 
+    save_run, 
+    get_notices_to_notify,
+    mark_notify_failed,
+    mark_notify_sent
+)
 from time import perf_counter
 from datetime import datetime, timedelta, timezone
-from src.notify import decide_notify_status
+from src.notify import decide_notify_status, build_discord_payload, send_discord
+from dotenv import load_dotenv
 
 KST = timezone(timedelta(hours=9))
 
@@ -70,6 +80,13 @@ def parse_notices(xml_bytes: bytes) -> tuple[list[dict], list[dict]]:
 
     return notices, rejected
 
+
+def describe_error(error: requests.RequestException) -> str:
+    if error.response is not None:
+        return f'HTTP {error.response.status_code}'
+    else:
+        return type(error).__name__
+
 def main() -> None:
     db_path = "noticeflow.db"
     init_db(db_path)
@@ -87,6 +104,11 @@ def main() -> None:
     }
 
     try:
+        load_dotenv()
+        webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
+        if not webhook_url:
+            raise RuntimeError("DISCORD_WEBHOOK_URL이 설정되지 않았습니다.")
+        
         response = requests.get(
             "https://www.uos.ac.kr/rss/gBoard.do",
             headers={
@@ -102,6 +124,18 @@ def main() -> None:
             notice["notify_status"] = decide_notify_status(notice["published_at"], now)
         inserted_count = save_notices(db_path, notices)
 
+        sent_count = 0
+        failed_count = 0
+        for notice in get_notices_to_notify(db_path):
+            try:
+                send_discord(webhook_url, build_discord_payload(notice))
+                mark_notify_sent(db_path, notice["id"])
+                sent_count += 1
+            except requests.RequestException as error:
+                mark_notify_failed(db_path, notice["id"], describe_error(error))
+                failed_count += 1
+            time.sleep(1)
+
         run["fetched_count"] = len(notices)
         run["rejected_count"] = len(rejected)
         run["inserted_count"] = inserted_count
@@ -110,6 +144,7 @@ def main() -> None:
         print("수집 건수:", len(notices))
         print("제외 건수:", len(rejected))
         print("신규 저장 건수:", inserted_count)  
+        print("알림 발송:", sent_count, "/ 실패:", failed_count)
 
     except Exception as error:
         run["error"] = f"{type(error).__name__}: {error}"

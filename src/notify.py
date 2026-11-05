@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import requests
 
 RECENT_DAYS = 3
 
@@ -17,10 +18,25 @@ def decide_notify_status(
 
     return "SKIPPED"
 
-def format_message(notice: dict) -> str:
-    if notice["published_at"] is not None:
-        normalized_published_at = datetime.fromisoformat(notice["published_at"]).strftime("%Y-%m-%d %H:%M")
-    else:
-        normalized_published_at = "미확인"
+UOS_NOTICE_URL = "https://www.uos.ac.kr/korNotice/view.do?list_id=FA1&seq={seq}"
 
-    return f'제목: {notice["title"]}\n게시일: {normalized_published_at}\n링크: {notice["url"]}'
+def build_discord_payload(notice: dict) -> dict:
+    embed = {
+        "title": notice["title"][:256],
+        "url": UOS_NOTICE_URL.format(seq=notice["source_id"]),
+        "color": 0x1E5BA8,
+        "footer": {"text": "서울시립대 일반공지"},
+    }
+
+    if notice["published_at"] is not None:
+        embed["timestamp"] = notice["published_at"]
+    else:
+        embed["footer"]["text"] = "서울시립대 일반공지 · 게시일 미확인"
+
+    return {"username": "학교 공지사항", "embeds": [embed]}
+
+
+def send_discord(webhook_url: str, payload: dict) -> None:
+    response = requests.post(webhook_url, json=payload, timeout=10)
+    response.raise_for_status()
+
