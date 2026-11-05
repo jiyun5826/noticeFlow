@@ -1,7 +1,7 @@
 import requests
 import xml.etree.ElementTree as ET
 from urllib.parse import parse_qs, urlparse
-from src.db import init_db, save_notices
+from src.db import init_db, save_notices, save_run
 from time import perf_counter
 from datetime import datetime, timedelta, timezone
 
@@ -70,39 +70,51 @@ def parse_notices(xml_bytes: bytes) -> tuple[list[dict], list[dict]]:
     return notices, rejected
 
 def main() -> None:
-    started_at = perf_counter()
-
-    response = requests.get(
-        "https://www.uos.ac.kr/rss/gBoard.do",
-        headers={
-            "User-Agent": "NoticeFlow/0.1",
-            "Accept": "application/rss+xml, application/xml, text/xml, */*",
-        },
-        timeout=10,
-    )
-
-    print(response.status_code)
-    print(len(response.text))
-
-    print(response.url)
-    print(response.history)
-    print(response.headers.get("Content-Type"))
-    print(response.encoding)
-
-    response.raise_for_status()
-    notices, rejected = parse_notices(response.content)
-
     db_path = "noticeflow.db"
     init_db(db_path)
 
-    inserted_count = save_notices(db_path, notices)
+    started_at = perf_counter()
 
-    print("수집 건수:", len(notices))
-    print("제외 건수:", len(rejected))
-    print("신규 저장 건수:", inserted_count)
+    run = {
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "status": "FAILED",
+        "fetched_count": None,
+        "rejected_count": None,
+        "inserted_count": None,
+        "duration_ms": None,
+        "error": None,
+    }
 
-    elapsed_seconds = perf_counter() - started_at
-    print(f"실행시간: {elapsed_seconds:.3f}초")
+    try:
+        response = requests.get(
+            "https://www.uos.ac.kr/rss/gBoard.do",
+            headers={
+                "User-Agent": "NoticeFlow/0.1",
+                "Accept": "application/rss+xml, application/xml, text/xml, */*",
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        notices, rejected = parse_notices(response.content) 
+        inserted_count = save_notices(db_path, notices)
+
+        run["fetched_count"] = len(notices)
+        run["rejected_count"] = len(rejected)
+        run["inserted_count"] = inserted_count
+        run["status"] = "SUCCESS"       
+
+        print("수집 건수:", len(notices))
+        print("제외 건수:", len(rejected))
+        print("신규 저장 건수:", inserted_count)  
+
+    except Exception as error:
+        run["error"] = f"{type(error).__name__}: {error}"
+        raise
+
+    finally:
+        run["duration_ms"] = round((perf_counter() - started_at) * 1000)
+        save_run(db_path, run)                         
+        print(f"실행시간: {run['duration_ms']}ms")
 
 
 if __name__ == "__main__":

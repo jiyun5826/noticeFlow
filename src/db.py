@@ -18,6 +18,20 @@ def init_db(db_path: str) -> None:
             )
         """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS collection_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                started_at TEXT NOT NULL,
+                status TEXT NOT NULL,
+                fetched_count INTEGER,
+                rejected_count INTEGER,
+                inserted_count INTEGER,
+                duration_ms INTEGER,
+                error TEXT
+            )
+        """
+        )
         connection.commit()
     finally:
         connection.close()
@@ -54,3 +68,33 @@ def save_notices(db_path: str, notices: list[dict]) -> int:
         connection.close()
 
     return inserted_count
+
+def save_run(db_path: str, run: dict) -> None:
+    connection = sqlite3.connect(db_path)
+
+    try:
+        connection.execute(
+            """
+            INSERT INTO collection_runs(
+                started_at,
+                status,
+                fetched_count,
+                rejected_count,
+                inserted_count,
+                duration_ms,
+                error
+            ) VALUES (
+                :started_at,
+                :status,
+                :fetched_count,
+                :rejected_count,
+                :inserted_count,
+                :duration_ms,
+                :error
+            )
+        """, 
+        run
+        )
+        connection.commit()
+    finally:
+        connection.close()

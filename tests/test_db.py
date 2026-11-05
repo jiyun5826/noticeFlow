@@ -1,5 +1,5 @@
 import sqlite3
-from src.db import init_db, save_notices
+from src.db import init_db, save_notices, save_run
 
 def test_save_notices_ignores_duplicates(tmp_path):
     db_path = tmp_path / "test.db"
@@ -34,3 +34,28 @@ def test_save_notices_ignores_duplicates(tmp_path):
         connection.close()
 
     assert saved_count == 2
+
+
+def test_save_run_records_one_row(tmp_path):
+    db_path = str(tmp_path/"test.db")
+    init_db(db_path)
+
+    save_run(db_path, {
+        "started_at": "2026-11-05T09:00:00+00:00",
+        "status": "SUCCESS",
+        "fetched_count": 24,
+        "rejected_count": 0,
+        "inserted_count": 3,
+        "duration_ms": 512,
+        "error": None,
+    })
+
+    connection = sqlite3.connect(db_path)
+    try:
+        rows = connection.execute(
+            "SELECT status, fetched_count, inserted_count, error FROM collection_runs"
+        ).fetchall()
+    finally:
+        connection.close()
+
+    assert rows == [("SUCCESS", 24, 3, None)]
