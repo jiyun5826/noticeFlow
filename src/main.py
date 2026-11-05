@@ -4,6 +4,7 @@ from urllib.parse import parse_qs, urlparse
 from src.db import init_db, save_notices, save_run
 from time import perf_counter
 from datetime import datetime, timedelta, timezone
+from src.notify import decide_notify_status
 
 KST = timezone(timedelta(hours=9))
 
@@ -96,6 +97,9 @@ def main() -> None:
         )
         response.raise_for_status()
         notices, rejected = parse_notices(response.content) 
+        now = datetime.now(timezone.utc)
+        for notice in notices:
+            notice["notify_status"] = decide_notify_status(notice["published_at"], now)
         inserted_count = save_notices(db_path, notices)
 
         run["fetched_count"] = len(notices)

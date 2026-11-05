@@ -14,6 +14,10 @@ def init_db(db_path: str) -> None:
                 url TEXT NOT NULL,
                 published_at TEXT,
                 first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                notify_status TEXT NOT NULL DEFAULT 'SKIPPED',
+                notify_attempts INTEGER NOT NULL DEFAULT 0,
+                notify_last_error TEXT,
+                notified_at TEXT,
                 UNIQUE (source, source_id)
             )
         """
@@ -49,13 +53,15 @@ def save_notices(db_path: str, notices: list[dict]) -> int:
                 source_id,
                 title,
                 url,
-                published_at
+                published_at,
+                notify_status
             ) VALUES (
                 :source,
                 :source_id,
                 :title,
                 :url,
-                :published_at
+                :published_at,
+                :notify_status
             )
             ON CONFLICT(source, source_id) DO NOTHING
         """,
