@@ -109,6 +109,8 @@ def save_run(db_path: str, run: dict) -> None:
                 rejected_count,
                 inserted_count,
                 duration_ms,
+                notify_sent_count,
+                notify_failed_count,
                 error
             ) VALUES (
                 :started_at,
@@ -117,6 +119,8 @@ def save_run(db_path: str, run: dict) -> None:
                 :rejected_count,
                 :inserted_count,
                 :duration_ms,
+                :notify_sent_count,
+                :notify_failed_count,
                 :error
             )
         """, 

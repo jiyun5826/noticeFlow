@@ -60,18 +60,20 @@ def test_save_run_records_one_row(tmp_path):
         "rejected_count": 0,
         "inserted_count": 3,
         "duration_ms": 512,
+        "notify_sent_count": 2,
+        "notify_failed_count": 1,
         "error": None,
     })
 
     connection = sqlite3.connect(db_path)
     try:
         rows = connection.execute(
-            "SELECT status, fetched_count, inserted_count, error FROM collection_runs"
+            "SELECT status, fetched_count, inserted_count, notify_sent_count, notify_failed_count, error FROM collection_runs"
         ).fetchall()
     finally:
         connection.close()
 
-    assert rows == [("SUCCESS", 24, 3, None)]
+    assert rows == [("SUCCESS", 24, 3, 2, 1, None)]
 
 def test_save_notices_keeps_existing_notify_status(tmp_path):
     db_path = str(tmp_path / "test.db")

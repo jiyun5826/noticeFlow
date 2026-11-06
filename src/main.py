@@ -101,6 +101,8 @@ def main() -> None:
         "rejected_count": None,
         "inserted_count": None,
         "duration_ms": None,
+        "notify_sent_count": None,
+        "notify_failed_count": None,
         "error": None,
     }
 
@@ -144,7 +146,10 @@ def main() -> None:
         run["fetched_count"] = len(notices)
         run["rejected_count"] = len(rejected)
         run["inserted_count"] = inserted_count
-        run["status"] = "SUCCESS"       
+        run["status"] = "SUCCESS"     
+
+        run["notify_sent_count"] = sent_count
+        run["notify_failed_count"] = failed_count  
 
         print("수집 건수:", len(notices))
         print("제외 건수:", len(rejected))
