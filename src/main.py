@@ -115,6 +115,37 @@ def collect_source(db_path: str, source: str, keywords: list[str], now: datetime
     return {"fetched": len(notices), "rejected": len(rejected), "inserted": inserted_count}
 
 
+def send_pending_notices(db_path: str, webhook_url: str, sender=send_discord, sleep=time.sleep) -> tuple[int, int]:
+    sent_count = 0
+    failed_count = 0
+    for notice in get_notices_to_notify(db_path):
+        try:
+            sender(webhook_url, build_discord_payload(notice))
+            mark_notify_sent(db_path, notice["id"])
+            sent_count += 1
+        except requests.RequestException as error:
+            mark_notify_failed(db_path, notice["id"], describe_error(error))
+            failed_count += 1
+        sleep(1)
+    return sent_count, failed_count
+
+
+def collect_all(db_path: str, keywords: list[str], now: datetime, collect=collect_source) -> tuple[dict, list[str]]:
+    totals = {"fetched": 0, "rejected": 0, "inserted": 0}
+    source_errors = []
+    for source in SOURCES:
+        try:
+            result = collect(db_path, source, keywords, now)
+        except Exception as error:
+            source_errors.append(f"{source}: {type(error).__name__}: {error}")
+            print(f"[{SOURCES[source]['name']}] 수집 실패: {type(error).__name__}")
+            continue
+        for key in totals:
+            totals[key] += result[key]
+        print(f"[{SOURCES[source]['name']}] 수집 {result['fetched']} / 제외 {result['rejected']} / 신규 {result['inserted']}")
+    return totals, source_errors
+
+
 def main() -> None:
     db_path = "noticeflow.db"
     init_db(db_path)
@@ -142,30 +173,9 @@ def main() -> None:
         keywords = load_keywords("config/keywords.json")
         now = datetime.now(timezone.utc)
 
-        totals = {"fetched": 0, "rejected": 0, "inserted": 0}
-        source_errors = []
-        for source in SOURCES:
-            try:
-                result = collect_source(db_path, source, keywords, now)
-            except Exception as error:
-                source_errors.append(f"{source}: {type(error).__name__}: {error}")
-                print(f"[{SOURCES[source]['name']}] 수집 실패: {type(error).__name__}")
-                continue
-            for key in totals:
-                totals[key] += result[key]
-            print(f"[{SOURCES[source]['name']}] 수집 {result['fetched']} / 제외 {result['rejected']} / 신규 {result['inserted']}")
+        totals, source_errors = collect_all(db_path, keywords, now)
 
-        sent_count = 0
-        failed_count = 0
-        for notice in get_notices_to_notify(db_path):
-            try:
-                send_discord(webhook_url, build_discord_payload(notice))
-                mark_notify_sent(db_path, notice["id"])
-                sent_count += 1
-            except requests.RequestException as error:
-                mark_notify_failed(db_path, notice["id"], describe_error(error))
-                failed_count += 1
-            time.sleep(1)
+        sent_count, failed_count = send_pending_notices(db_path, webhook_url)
 
         run["fetched_count"] = totals["fetched"]
         run["rejected_count"] = totals["rejected"]
