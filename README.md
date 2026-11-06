@@ -77,6 +77,24 @@ n8n (매시 정각)
 
 n8n은 실행 예약과 실패 감지만 맡고, 수집·중복 제거·알림 판단·재시도 로직은 테스트 가능한 Python에 둡니다.
 
+### n8n 워크플로 파일
+
+`n8n/` 폴더에 운영 중인 워크플로를 내보내 두었습니다. 웹훅 URL은 포함되지 않으며, Discord Credential은 ID와 이름만 들어 있습니다.
+
+| 파일 | 내용 |
+| --- | --- |
+| `n8n/hourly.json` | 매시 정각 `python -m src.main` 실행, 실패 시 error alert 호출 |
+| `n8n/error-alert.json` | Error Trigger → Discord로 실패한 워크플로·시각·오류 마지막 줄 전송 |
+| `n8n/daily-backup.json` | 매일 04:30 SQLite 백업, 7일 지난 백업 삭제 |
+
+다른 n8n에서 사용하려면:
+
+1. n8n 실행 환경에서 Execute Command 노드를 사용할 수 있어야 합니다(필요하면 `NODES_EXCLUDE=[]`).
+2. 워크플로 메뉴 → **Import...**로 세 파일을 가져옵니다.
+3. `error-alert`의 Discord 노드에 자신의 웹훅 URL로 Credential을 새로 만듭니다.
+4. `hourly`와 `daily-backup`의 Settings에서 Error Workflow를 가져온 `error-alert`로 다시 지정합니다(가져오면 ID가 바뀝니다).
+5. Execute Command의 경로(`/home/ubuntu/noticeFlow`)를 실제 설치 경로로 바꾸고 Publish합니다.
+
 ## 설치
 
 Windows PowerShell 기준입니다. Python 3.10 이상이 필요합니다(개발: Windows 3.13, 운영: Ubuntu 3.12).
@@ -204,5 +222,6 @@ src/sources.py         출처 목록
 src/db.py              SQLite 스키마, 마이그레이션, 저장·조회
 src/notify.py          알림 판단, Discord 카드 생성·발송
 src/classifier.py      키워드 분류
+n8n/                   n8n 워크플로 내보내기(JSON)
 tests/                 pytest 테스트와 통제 실험
 ```
