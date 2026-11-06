@@ -21,8 +21,8 @@
 - 프로젝트명: **NoticeFlow** (가칭)
 - 지원 목적: **큐레이터스 AI 자동화 개발자 인턴** 지원용 3일 자동화 프로젝트
 - 해결하려는 문제: 서울시립대 공지 게시판을 반복 방문해 신규 공고를 수동으로 판별하는 비효율
-- 목표 흐름: **공개 공지 수집 → 필드 정규화 → SQLite 중복 제거/상태 관리 → Google Sheets 누적 → Discord 신규 공고 알림 → n8n 주기 실행 및 실패 알림**
-- 기술 후보: Python, `requests`, `xml.etree.ElementTree`(RSS 파싱, BeautifulSoup은 현재 미사용), SQLite, pytest, Google Sheets API, Discord 웹훅, n8n
+- 목표 흐름: **공개 공지 수집 → 필드 정규화 → SQLite 중복 제거/상태 관리 → 관심 공지만 Discord 알림 → n8n 주기 실행 및 실패 알림**
+- 기술 후보: Python, `requests`, `xml.etree.ElementTree`(RSS 파싱, BeautifulSoup은 현재 미사용), SQLite, pytest, Discord 웹훅, n8n, AWS EC2 (Google Sheets는 11/6 범위 제외, LLM 요약 이후 선택)
 - 개발 환경: Windows, PowerShell, VS Code, Python `.venv`
 - 사용자 로컬 경로: `C:\Project\noficeFlow` (실제 디렉터리 확인; 철자 자동 수정 금지)
 - GitHub 원격 저장소: `https://github.com/jiyun5826/noticeFlow.git` (사용자가 연결 완료 보고, 실제 상태는 `git remote -v` 등으로 확인)
@@ -34,44 +34,37 @@
 - **P1:** 서울시립대 학사공지·컴퓨터과학부 공지 등 수집처 확장, 추가 분류.
 - **P2:** 외부 공고 사이트 대량 수집, LLM 요약, 대시보드, 복잡한 인프라. 3일 내 무리해서 추가하지 않는다.
 
-## 3. 현재 진행 상태 — 2026-11-04 Day 1 종료 기준
+## 3. 현재 진행 상태 — 2026-11-06 Day 3 종료 기준
 
-> 아래는 2026-11-04 저녁 저장소·DB·테스트를 직접 확인한 결과다. 이전 버전의 "HTTP 400 디버깅" 내용은 해결되어 대체했다. 세부 근거는 Notion 개발 기록(https://app.notion.com/p/40e78ad570dd816d8f2cdf87ea20f7e2)에 있다.
+> 2026-11-06 저녁 저장소·서버·테스트를 직접 확인한 결과다. 세부 근거와 경위는 Notion 개발 기록(https://app.notion.com/p/40e78ad570dd816d8f2cdf87ea20f7e2, 기록 1~13)과 n8n 정리(https://app.notion.com/p/40f78ad570dd81d2a22dc989a43e376b)에 있다.
 
 ### 완료·검증됨
 
-- **수집:** 공식 RSS `https://www.uos.ac.kr/rss/gBoard.do`에서 실제 공지 24건 수집 (HTTP 200, `text/xml; charset=utf-8`).
-- **HTTP 400 원인(해결):** 초기 요청은 400 `Access Blocked`(393바이트, 리다이렉트 없음). Accept만 바꾸면 400, User-Agent를 바꾸면 200 → 기본 `python-requests` User-Agent 차단 가능성이 높음(서버 규칙은 미확인). 브라우저 위장 없이 `User-Agent: NoticeFlow/0.1` 사용.
-- **파싱:** `list_id=FA1` 검증, `seq`를 `source_id`로 사용. 제목 없음·링크 형식 불일치 항목은 **해당 항목만 제외**하고 이유와 함께 `rejected`로 반환. 항목 0건·유효 항목 0건이면 전체 실패. `parse_notices()`는 `(notices, rejected)`를 반환하는 순수 함수.
-- **게시일:** `parse_published_at()`이 `2026-11-04T16:51:35+09:00` 형식으로 정규화. 잘못된 형식·빈 값은 `None`(가짜 날짜 생성 금지), 날짜만 이상하면 공지는 유지.
-- **중복 제거:** `UNIQUE(source, source_id)` + `ON CONFLICT DO NOTHING`. 실제 RSS 연속 2회 실행 시 신규 24건 → 0건 확인.
-- **테스트:** pytest 12개 통과 (Windows, `.venv`, Python 3.13.2, pytest 9.2.0).
-- **문서·설정:** README(설치·실행·테스트·한계), `.env.example`(`DISCORD_WEBHOOK_URL=`), `requirements.txt` UTF-8 재인코딩.
-- **Discord 웹훅:** 생성 및 PowerShell 수동 전송 테스트 성공. URL은 `.env`에만 보관(저장소에는 `.env.example`만 추적됨).
-- 실행: `python -m src.main` (`python src/main.py`는 import 경로 때문에 동작하지 않음). 테스트: `python -m pytest -v`.
+- **수집:** 공식 RSS 2개 — 일반공지 `rss/gBoard.do`(list_id FA1), 학사공지 `rss/hBoard.do`(FA2). 출처 설정은 `src/sources.py`의 `SOURCES`(키 = DB의 `source` 값, 기존 키 변경 금지). User-Agent `NoticeFlow/0.1`(기본 python-requests UA는 400 Access Blocked).
+- **파싱:** 출처별 `list_id` 검증, 잘못된 항목만 제외(`rejected`), 항목 0건·유효 0건이면 해당 출처 실패. 게시일은 `+09:00` ISO 8601, 잘못된 형식은 `None`.
+- **저장·중복:** `UNIQUE(source, source_id)` + `ON CONFLICT DO NOTHING`. `init_db()`가 `_add_column_if_missing()`으로 없는 컬럼만 `ALTER TABLE`(멱등) — 운영 DB에 적용 완료.
+- **알림 판단:** 처음 저장될 때 1회. 관심 키워드(`config/keywords.json`, 제목+본문) **그리고** 게시일 3일 이내 → `PENDING`, 아니면 `SKIPPED`. 게시일 없으면 관심 공지일 때만 알림. 이후 재등장해도 기존 상태 유지.
+- **발송:** `send_pending_notices()` — Discord 임베드 카드(출처별 링크·footer), PENDING·FAILED(시도 3회 미만) 대상, 실패 시 즉시 재시도하지 않고 다음 실행에서. 에러는 `HTTP 상태코드`/예외 이름만 저장(웹훅 URL 노출 방지). 발송 간 1초 대기.
+- **출처 격리:** `collect_all()` — 한 출처 실패해도 나머지 수집·발송 계속, 끝에서 RuntimeError로 실패를 알림. 실행 상태 SUCCESS/PARTIAL/FAILED.
+- **실행 기록:** `collection_runs`(수집·제외·신규·발송 성공/실패 건수, 소요 시간, 에러).
+- **테스트 36개 통과**(Windows 3.13, 서버 Ubuntu 3.12). 실패 상황(`test_pipeline.py`: Discord 429·타임아웃·재시도·출처 500)과 통제 실험(`test_experiments.py`: 동일 100건×3회 추가 알림 0건, 기존 100+신규 20 누락·오탐 0건 — fixture 기반).
+- **운영:** AWS EC2(서울, Ubuntu 24.04, t3.small, 12GiB) + n8n(systemd, 127.0.0.1 + SSH 터널). 워크플로 `NoticeFlow hourly`(매시 정각 `cd ~/noticeFlow && .venv/bin/python -m src.main`), `NoticeFlow error alert`(Error Trigger → Discord), `NoticeFlow daily backup`(04:30 `sqlite3 .backup`, 7일 보관). 2026-11-05 21:00부터 운영 기록 누적. 서버 DB가 기준 — **노트북에서 `python -m src.main` 실행 금지**(중복 알림).
+- **문서:** README 전면 갱신(커밋 f8b07e6).
 
-### 구현됐지만 미연결·미완
+### 확인된 사실 (설계 근거)
 
-- `src/classifier.py`(키워드 분류)와 테스트 3개는 있으나 `main()`에 연결되지 않음.
-- `description`은 파싱하지만 DB에 저장하지 않음.
-- 제외 항목·실행 결과는 콘솔 출력뿐, 파일·DB 기록 없음.
-- `first_seen_at`은 SQLite `CURRENT_TIMESTAMP`(시간대 표기 없는 UTC). `published_at`과 표기 방식이 다름.
-- `main()`에 400 디버깅용 `print`(status, url, history 등)가 남아 있음.
+- 학교 RSS는 한 번에 24건, **수정일 순 정렬**(학교 RSS 안내 페이지 명시) → "DB에 처음 저장"은 "새 게시"가 아님 → 게시일 기준 판단.
+- 학교 공식 RSS: 전체·일반·학사·장학공지, 학사일정, 식단. **학과 공지 RSS 없음**. 목록 페이지(`list.do`)는 SSO 흐름을 거침 → 사용하지 않음. 전체공지 RSS는 다른 출처와 중복 저장·알림이 생겨 사용하지 않음.
+- 키워드 오탐 사례: 학사 10012 "[교직] 산업체현장실습"이 `현장실습`으로 매칭(LLM 비교용).
 
-### Day 1에 발견한 설계 이슈 (Day 2 설계에 반영할 것)
+### 미완료
 
-1. **"DB에 처음 저장" ≠ "새로 게시".** 두 번째 실행에서 신규 저장 14건 중 실제 신규 게시는 4건. RSS에 상단 고정 공지 등 오래된 공지가 섞이고 구성이 시간에 따라 바뀜(31107은 고정 공지로 확인, 31654는 고정 아님·원인 미확인). → 알림은 **게시일 기준 최근 N일**로 판단하기로 결정(N 미정, 미구현). Notion "개발 기록 — Day 1"의 기존 초기 알림 정책("연동 이후 새로 삽입된 공지만 알림")은 이 발견과 충돌하므로 재검토 필요.
-2. **클라이언트 실패 ≠ 전송 실패.** PowerShell 5.1 `Invoke-WebRequest`가 응답 파싱 단계에서 에러로 끝났지만 Discord에는 메시지가 실제로 전송됨. → 재시도 시 "요청 전 실패"와 "응답 불명"을 구분해야 중복 알림을 줄일 수 있음.
+- 수작업 확인 시간 측정(본인 추정 "약 30분"은 미측정, 범위 확인 필요)
+- n8n 워크플로 JSON 내보내기(비밀값 확인 후 커밋)
+- LLM 요약·관심 판단(키워드 규칙과 정확도 비교)
+- 사소: 파서 제외 사유 문구가 "일반공지"로 고정, `first_seen_at`은 시간대 표기 없는 UTC
 
-### 아직 하지 않은 것
-
-- 실행 기록(로그 파일, `collection_runs` 테이블)
-- 알림 판단 기준 구현, 초기 알림 정책 확정
-- Python에서 Discord 발송, 발송 상태(`PENDING`/`SENT`/`FAILED`)·재시도
-- Google Sheets, n8n
-- fixture 통제 실험, 실행 시간 5회 이상 측정, 수작업 시간 측정
-
-> 이전 대화에서 언급된 별도 스타터 ZIP의 오프라인 테스트 결과(합성 HTML 6개 테스트 통과 등)는 **개발자가 직접 구현 중인 저장소의 결과가 아니다.** 사용자 저장소의 완료 성과로 기록하거나 복사하지 않는다.
+> 이전 대화에서 언급된 별도 스타터 ZIP의 오프라인 테스트 결과는 개발자가 직접 구현 중인 저장소의 결과가 아니다. 사용자 저장소의 완료 성과로 기록하거나 복사하지 않는다.
 
 ## 4. 3일 개발 계획
 
@@ -86,7 +79,7 @@
 
 ### Day 2 — 11/5: API 연동 및 자동화
 
-1. Google Sheets 공고 누적.
+1. ~~Google Sheets 공고 누적~~ → 11/6 범위 제외(LLM 요약 이후 선택).
 2. Discord에 **신규 공고만** 발송. 초기 데이터 일괄 알림 방지 정책 정의.
 3. 전송 상태(PENDING/SENT/FAILED), 재시도 횟수·마지막 오류 기록. 실패 후 재실행 검증.
 4. n8n은 **얇은 오케스트레이션 레이어**: Schedule Trigger로 Python 실행을 예약하고 실패 알림을 연결한다. 수집·정규화·중복 제거·전송 상태 로직은 Python에 유지한다.
@@ -126,17 +119,14 @@
 - 라이브 서비스 알림 전 첫 실행 시 기존 공고를 어떻게 취급할지 정책을 정한다.
 - Git 커밋은 실제 기능 단위로 하고, 의미 없는 커밋 수를 늘리지 않는다.
 
-## 7. Codex의 다음 작업 — Day 2
+## 7. Codex의 다음 작업
 
-Day 1은 완료됐다. 이어서 Day 2를 아래 순서로 진행한다. 코칭 원칙(1번)은 그대로 적용한다. 사용자가 직접 구현하고 Codex는 읽기·리뷰·안내를 우선한다.
+1. 수작업 확인 시간 측정 지원(일반+학사 두 게시판, 스톱워치, 3회, 측정 시각·조건 기록). 측정 전에는 시간 절감률을 쓰지 않는다.
+2. n8n 워크플로 JSON을 `n8n/`에 저장하기 전에 웹훅 URL·토큰이 없는지 확인.
+3. LLM 단계: 공지 요약·마감일 추출 또는 관심 판단. 키워드 규칙과 같은 데이터로 정확도를 비교하고, 마감일 오추출 위험 때문에 원문 링크를 항상 함께 둔다. API 키는 `.env`에만.
+4. 운영 기록 정리(`collection_runs`, n8n 실행 기록)와 지원서 반영. 실측 조건과 값만 사용.
 
-1. **실행 기록:** 제외 항목 상세(링크·제목·이유)는 `logging`으로 로그 파일에, 실행 요약(실행 시각, 수집·신규·중복·제외 건수, 소요 시간, 오류)은 SQLite `collection_runs` 테이블에. 파서는 기록하지 않고 `main()`이 기록한다. 디버그 `print` 정리.
-2. **알림 판단 기준:** 게시일 기준 최근 N일 공지만 알림. N과 초기 알림 정책을 사용자와 확정. `first_seen_at` 표기 정리 여부도 이때 결정.
-3. **Discord 발송:** `.env`의 `DISCORD_WEBHOOK_URL`을 읽어 `requests.post`(본문 `{"content": ...}`). 성공 응답 204, 메시지당 2000자 제한, 과다 호출 시 429. 발송 상태(`PENDING`/`SENT`/`FAILED`), 재시도 횟수, 마지막 오류 기록. 응답 불명 상황의 중복 가능성(3번 섹션 이슈 2)을 한계로 명시.
-4. **관심 공지 분류 연결:** `classifier.py`를 파이프라인에 연결하고 `description`·분류 결과 저장 여부 결정.
-5. **Google Sheets, n8n:** 위가 안정된 뒤 연결. n8n 실행 위치(로컬/Docker/Cloud)를 먼저 확인한다.
-
-웹훅 URL·토큰은 출력·커밋하지 않는다. 사용자가 스크린샷을 공유할 때 URL이 보이면 즉시 알리고 재발급을 안내한다.
+코칭 원칙(1번)은 그대로 적용한다. 운영 서버에 배포할 때는 백업(`sqlite3 .backup`) → `git pull` → `pytest` → 수동 1회 실행 → 확인 순서를 지킨다. 정각(n8n 실행 시각) 근처는 피한다.
 
 ## 8. 포트폴리오 기록 원칙
 
