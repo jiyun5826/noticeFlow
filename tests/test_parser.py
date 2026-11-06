@@ -18,7 +18,7 @@ RSS_XML = """
 
 
 def test_parse_notices_extracts_normalized_fields():
-    notices, rejected = parse_notices(RSS_XML)
+    notices, rejected = parse_notices(RSS_XML, "uos_general")
 
     assert rejected == []
     assert notices == [
@@ -46,14 +46,14 @@ def test_parse_notices_rejects_wrong_board():
     """.strip().encode("utf-8")
 
     with pytest.raises(ValueError, match="공지가 없습니다"):
-        parse_notices(invalid_xml)
+        parse_notices(invalid_xml, "uos_general")
 
 
 def test_parse_notices_rejects_feed_without_items():
     empty_feed = b"<rss><channel></channel></rss>"
 
     with pytest.raises(ValueError, match="공지 항목"):
-        parse_notices(empty_feed)
+        parse_notices(empty_feed, "uos_general")
 
 
 def test_parse_notices_skips_invalid_item_and_keeps_others():
@@ -78,7 +78,7 @@ def test_parse_notices_skips_invalid_item_and_keeps_others():
       </channel>
     </rss>""".encode("utf-8")
 
-    notices, rejected = parse_notices(xml)
+    notices, rejected = parse_notices(xml, "uos_general")
 
     # 정상 공지 2건만 남아야 한다
     assert [n["source_id"] for n in notices] == ["100", "102"]
@@ -104,7 +104,7 @@ def test_parse_notices_skips_item_without_title():
   </channel>
 </rss>""".encode("utf-8")
 
-    notices, rejected = parse_notices(xml)
+    notices, rejected = parse_notices(xml, "uos_general")
 
     assert [n["source_id"] for n in notices] == ["201"]
     assert len(rejected) == 1
@@ -121,4 +121,30 @@ def test_parse_published_at_returns_none_for_invalid_date():
 def test_parse_published_at_returns_none_for_missing_value():
     assert parse_published_at(None) is None
     assert parse_published_at("") is None
+
+
+HAKSA_XML = """<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>학사 공지</title>
+      <link>https://www.uos.ac.kr/korNotice/view.do?list_id=FA2&amp;seq=9900</link>
+      <pubDate>2026-11-06 10:00:00</pubDate>
+    </item>
+  </channel>
+</rss>""".encode("utf-8")
+
+
+def test_parse_notices_uses_source_settings():
+    notices, rejected = parse_notices(HAKSA_XML, "uos_haksa")
+
+    assert rejected == []
+    assert notices[0]["source"] == "uos_haksa"
+    assert notices[0]["source_id"] == "9900"
+
+
+def test_parse_notices_rejects_item_from_other_board():
+    # 학사공지(FA2) 글을 일반공지(FA1)로 파싱하면 제외되어야 함
+    with pytest.raises(ValueError, match="공지가 없습니다"):
+        parse_notices(HAKSA_XML, "uos_general")
 

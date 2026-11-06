@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 from src.notify import decide_notify_status, build_discord_payload, send_discord
 from dotenv import load_dotenv
 from src.classifier import classify_notice, load_keywords
+from src.sources import SOURCES
 
 KST = timezone(timedelta(hours=9))
 
@@ -33,9 +34,10 @@ def parse_published_at(text: str | None) -> str | None:
     return published_at.replace(tzinfo=KST).isoformat()
     
 
-def parse_notices(xml_bytes: bytes) -> tuple[list[dict], list[dict]]:
+def parse_notices(xml_bytes: bytes, source: str) -> tuple[list[dict], list[dict]]:
     notices = []
     rejected = []
+    config = SOURCES[source]
 
     root = ET.fromstring(xml_bytes)
 
@@ -50,7 +52,7 @@ def parse_notices(xml_bytes: bytes) -> tuple[list[dict], list[dict]]:
         list_id = query.get("list_id", [None])[0]
         seq = query.get("seq", [None])[0]
 
-        if list_id != "FA1" or seq is None:
+        if list_id != config["list_id"] or seq is None:
             rejected.append({
                 "title": title,
                 "url": link,
@@ -67,7 +69,7 @@ def parse_notices(xml_bytes: bytes) -> tuple[list[dict], list[dict]]:
             continue
         
         notices.append({
-            "source": "uos_general",
+            "source": source,
             "source_id": seq,
             "title": title,
             "description": item.findtext("description") or "",
@@ -121,7 +123,7 @@ def main() -> None:
             timeout=10,
         )
         response.raise_for_status()
-        notices, rejected = parse_notices(response.content) 
+        notices, rejected = parse_notices(response.content, "uos_general") 
         keywords = load_keywords("config/keywords.json")
         now = datetime.now(timezone.utc)
         for notice in notices: 
