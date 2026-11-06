@@ -24,6 +24,7 @@ def test_payload_uses_title_as_link_without_sort_param():
         "title": "AI 해커톤 참가자 모집",
         "url": "https://www.uos.ac.kr/korNotice/view.do?list_id=FA1&seq=31802&sort=1",
         "published_at": "2026-11-05T18:00:51+09:00",
+        "source": "uos_general",
     }
 
     embed = build_discord_payload(notice)["embeds"][0]
@@ -34,7 +35,7 @@ def test_payload_uses_title_as_link_without_sort_param():
 
 
 def test_payload_without_date_has_no_timestamp():
-    notice = {"source_id": "1", "title": "날짜 없는 공지", "url": "https://example.com/1", "published_at": None}
+    notice = {"source_id": "1", "title": "날짜 없는 공지", "url": "https://example.com/1", "published_at": None, "source": "uos_general",}
 
     embed = build_discord_payload(notice)["embeds"][0]
 
@@ -43,7 +44,7 @@ def test_payload_without_date_has_no_timestamp():
 
 
 def test_payload_truncates_long_title():
-    notice = {"source_id": "1", "title": "가" * 300, "url": "https://example.com/1", "published_at": None}
+    notice = {"source_id": "1", "title": "가" * 300, "url": "https://example.com/1", "published_at": None, "source": "uos_general",}
 
     embed = build_discord_payload(notice)["embeds"][0]
 
@@ -56,3 +57,20 @@ def test_recent_but_not_relevant_notice_is_skipped():
 
 def test_notice_without_date_and_not_relevant_is_skipped():
     assert decide_notify_status(None, NOW, False) == "SKIPPED"
+
+
+def test_payload_uses_board_of_its_source():
+    notice = {
+        "source": "uos_haksa",
+        "source_id": "9900",
+        "title": "학사 공지",
+        "url": "https://www.uos.ac.kr/korNotice/view.do?list_id=FA2&seq=9900&sort=3",
+        "published_at": "2026-11-06T10:00:00+09:00",
+    }
+
+    embed = build_discord_payload(notice)["embeds"][0]
+
+    assert embed["url"] == "https://www.uos.ac.kr/korNotice/view.do?list_id=FA2&seq=9900"
+    assert "학사" in embed["footer"]["text"]
+
+    

@@ -137,7 +137,7 @@ def get_notices_to_notify(db_path: str, max_attemts: int = 3) -> list[dict]:
     try:
         rows = connection.execute(
             """
-            SELECT id, source_id, title, url, published_at
+            SELECT id, source, source_id, title, url, published_at
             FROM notices
             WHERE notify_status IN ('PENDING', 'FAILED')
             AND notify_attempts < ?
