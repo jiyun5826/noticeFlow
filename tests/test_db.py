@@ -18,6 +18,8 @@ def test_save_notices_ignores_duplicates(tmp_path):
             "url": "https://example.com/100",
             "published_at": "2026-11-04 10:00:00",
             "notify_status": "PENDING",   
+            "is_relevant": True,
+            "matched_keywords": None,
         },
         {
             "source": "uos_general",
@@ -26,6 +28,8 @@ def test_save_notices_ignores_duplicates(tmp_path):
             "url": "https://example.com/101",
             "published_at": "2026-11-04 11:00:00",
             "notify_status": "PENDING",   
+            "is_relevant": True,
+            "matched_keywords": None,
         },
     ]
 
@@ -79,6 +83,8 @@ def test_save_notices_keeps_existing_notify_status(tmp_path):
         "url": "https://example.com/200",
         "published_at": "2026-11-05T10:00:00+09:00",
         "notify_status": "PENDING",
+        "is_relevant": True,
+        "matched_keywords": None,
     }
     save_notices(db_path, [notice])
 
@@ -113,6 +119,8 @@ def _notice(source_id, notify_status):
         "url": f"https://example.com/{source_id}",
         "published_at": "2026-11-05T10:00:00+09:00",
         "notify_status": notify_status,
+        "is_relevant": True,
+        "matched_keywords": None,
     }
 
 

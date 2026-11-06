@@ -15,6 +15,7 @@ from time import perf_counter
 from datetime import datetime, timedelta, timezone
 from src.notify import decide_notify_status, build_discord_payload, send_discord
 from dotenv import load_dotenv
+from src.classifier import classify_notice, load_keywords
 
 KST = timezone(timedelta(hours=9))
 
@@ -119,9 +120,13 @@ def main() -> None:
         )
         response.raise_for_status()
         notices, rejected = parse_notices(response.content) 
+        keywords = load_keywords("config/keywords.json")
         now = datetime.now(timezone.utc)
-        for notice in notices:
-            notice["notify_status"] = decide_notify_status(notice["published_at"], now)
+        for notice in notices: 
+            classified = classify_notice(notice, keywords)
+            notice["is_relevant"] = classified["is_relevant"]
+            notice["matched_keywords"] = ",".join(classified["matched_keywords"]) or None
+            notice["notify_status"] = decide_notify_status(notice["published_at"], now, notice["is_relevant"])
         inserted_count = save_notices(db_path, notices)
 
         sent_count = 0

@@ -71,14 +71,18 @@ def save_notices(db_path: str, notices: list[dict]) -> int:
                 title,
                 url,
                 published_at,
-                notify_status
+                notify_status,
+                is_relevant,
+                matched_keywords
             ) VALUES (
                 :source,
                 :source_id,
                 :title,
                 :url,
                 :published_at,
-                :notify_status
+                :notify_status,
+                :is_relevant,
+                :matched_keywords
             )
             ON CONFLICT(source, source_id) DO NOTHING
         """,

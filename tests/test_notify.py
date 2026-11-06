@@ -4,19 +4,19 @@ KST = timezone(timedelta(hours=9))
 NOW = datetime(2026, 11, 5, 18, 0, 0,tzinfo=KST)
 
 def test_recent_notice_is_pending():
-    assert decide_notify_status("2026-11-04T18:00:00+09:00", NOW) == "PENDING"
+    assert decide_notify_status("2026-11-04T18:00:00+09:00", NOW, True) == "PENDING"
 
 
 def test_notice_exactly_three_days_old_is_pending():
-    assert decide_notify_status("2026-11-02T18:00:00+09:00", NOW) == "PENDING"
+    assert decide_notify_status("2026-11-02T18:00:00+09:00", NOW, True) == "PENDING"
 
 
 def test_old_notice_is_skipped():
-    assert decide_notify_status("2026-10-26T13:07:06+09:00", NOW) == "SKIPPED"
+    assert decide_notify_status("2026-10-26T13:07:06+09:00", NOW, True) == "SKIPPED"
 
 
 def test_notice_without_date_is_pending():
-    assert decide_notify_status(None, NOW) == "PENDING"
+    assert decide_notify_status(None, NOW, True) == "PENDING"
 
 def test_payload_uses_title_as_link_without_sort_param():
     notice = {
@@ -48,3 +48,11 @@ def test_payload_truncates_long_title():
     embed = build_discord_payload(notice)["embeds"][0]
 
     assert len(embed["title"]) <= 256
+
+
+def test_recent_but_not_relevant_notice_is_skipped():
+    assert decide_notify_status("2026-11-05T10:00:00+09:00", NOW, False) == "SKIPPED"
+
+
+def test_notice_without_date_and_not_relevant_is_skipped():
+    assert decide_notify_status(None, NOW, False) == "SKIPPED"

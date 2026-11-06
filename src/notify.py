@@ -6,8 +6,11 @@ RECENT_DAYS = 3
 def decide_notify_status(
     published_at: str | None,
     now: datetime,
+    is_relevant: bool,
     recent_days: int = RECENT_DAYS
 ) -> str:
+    if not is_relevant:
+        return "SKIPPED"
     if published_at is None:
         return "PENDING"
 
