@@ -26,7 +26,7 @@ def decide_notify_status(
 
 def build_discord_payload(notice: dict) -> dict:
     config = SOURCES[notice["source"]]
-    footer = f'서울시립대 {config['name']}공지'
+    footer = f"서울시립대 {config['name']}공지"
                             
     embed = {
         "title": notice["title"][:256],
