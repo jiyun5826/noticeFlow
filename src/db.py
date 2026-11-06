@@ -1,6 +1,13 @@
 import sqlite3
 from datetime import timezone, datetime
 
+def _add_column_if_missing(connection, table: str, column: str, definition: str) -> None:
+    rows = connection.execute(f'PRAGMA table_info({table})').fetchall()
+    existing_columns = [row[1] for row in rows]
+
+    if column not in existing_columns:
+        connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
 def init_db(db_path: str) -> None:
     connection = sqlite3.connect(db_path)
 
@@ -19,6 +26,8 @@ def init_db(db_path: str) -> None:
                 notify_attempts INTEGER NOT NULL DEFAULT 0,
                 notify_last_error TEXT,
                 notified_at TEXT,
+                is_relevant INTEGER NOT NULL DEFAULT 0,
+                matched_keywords TEXT,
                 UNIQUE (source, source_id)
             )
         """
@@ -33,10 +42,17 @@ def init_db(db_path: str) -> None:
                 rejected_count INTEGER,
                 inserted_count INTEGER,
                 duration_ms INTEGER,
+                notify_sent_count INTEGER,
+                notify_failed_count INTEGER,
                 error TEXT
             )
         """
         )
+        _add_column_if_missing(connection, "notices", "is_relevant", "INTEGER NOT NULL DEFAULT 0")
+        _add_column_if_missing(connection, "notices", "matched_keywords", "TEXT")
+        _add_column_if_missing(connection, "collection_runs", "notify_sent_count", "INTEGER")
+        _add_column_if_missing(connection, "collection_runs", "notify_failed_count", "INTEGER")
+        connection.commit()
         connection.commit()
     finally:
         connection.close()

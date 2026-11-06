@@ -149,3 +149,51 @@ def test_failed_notice_is_retried_until_three_attempts(tmp_path):
 
     mark_notify_failed(db_path, notice_id, "HTTP 500")
     assert get_notices_to_notify(db_path) == []       # 3번 실패 → 더 이상 시도 안 함
+
+
+def test_init_db_adds_missing_columns_and_keeps_data(tmp_path):
+    db_path = str(tmp_path / "old.db")
+
+    # 어제까지의 옛날 구조로 DB를 직접 만듦
+    connection = sqlite3.connect(db_path)
+    connection.execute("""
+        CREATE TABLE notices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT NOT NULL,
+            source_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            url TEXT NOT NULL,
+            published_at TEXT,
+            first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            notify_status TEXT NOT NULL DEFAULT 'SKIPPED',
+            notify_attempts INTEGER NOT NULL DEFAULT 0,
+            notify_last_error TEXT,
+            notified_at TEXT,
+            UNIQUE (source, source_id)
+        )
+    """)
+    connection.execute(
+        "INSERT INTO notices (source, source_id, title, url, notify_status) "
+        "VALUES ('uos_general', '1', '기존 공지', 'https://example.com/1', 'SENT')"
+    )
+    connection.commit()
+    connection.close()
+
+    init_db(db_path)
+    init_db(db_path)   # 두 번 실행해도 에러가 나지 않아야 함 (멱등성)
+
+    connection = sqlite3.connect(db_path)
+    try:
+        notice_columns = [row[1] for row in connection.execute("PRAGMA table_info(notices)")]
+        run_columns = [row[1] for row in connection.execute("PRAGMA table_info(collection_runs)")]
+        row = connection.execute(
+            "SELECT title, notify_status, is_relevant FROM notices WHERE source_id = '1'"
+        ).fetchone()
+    finally:
+        connection.close()
+
+    assert "is_relevant" in notice_columns
+    assert "matched_keywords" in notice_columns
+    assert "notify_sent_count" in run_columns
+    assert "notify_failed_count" in run_columns
+    assert row == ("기존 공지", "SENT", 0)   # 기존 데이터 유지, 새 컬럼은 기본값 0
