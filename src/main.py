@@ -90,6 +90,31 @@ def describe_error(error: requests.RequestException) -> str:
     else:
         return type(error).__name__
 
+
+def collect_source(db_path: str, source: str, keywords: list[str], now: datetime) -> dict:
+    response = requests.get(
+        SOURCES[source]["rss_url"],
+        headers={
+            "User-Agent": "NoticeFlow/0.1",
+            "Accept": "application/rss+xml, application/xml, text/xml, */*",
+        },
+        timeout=10,
+    )
+    response.raise_for_status()
+    notices, rejected = parse_notices(response.content, source)
+
+    for notice in notices:
+        classified = classify_notice(notice, keywords)
+        notice["is_relevant"] = classified["is_relevant"]
+        notice["matched_keywords"] = ",".join(classified["matched_keywords"]) or None
+        notice["notify_status"] = decide_notify_status(
+            notice["published_at"], now, notice["is_relevant"]
+        )
+
+    inserted_count = save_notices(db_path, notices)
+    return {"fetched": len(notices), "rejected": len(rejected), "inserted": inserted_count}
+
+
 def main() -> None:
     db_path = "noticeflow.db"
     init_db(db_path)
@@ -113,25 +138,22 @@ def main() -> None:
         webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
         if not webhook_url:
             raise RuntimeError("DISCORD_WEBHOOK_URL이 설정되지 않았습니다.")
-        
-        response = requests.get(
-            "https://www.uos.ac.kr/rss/gBoard.do",
-            headers={
-                "User-Agent": "NoticeFlow/0.1",
-                "Accept": "application/rss+xml, application/xml, text/xml, */*",
-            },
-            timeout=10,
-        )
-        response.raise_for_status()
-        notices, rejected = parse_notices(response.content, "uos_general") 
+
         keywords = load_keywords("config/keywords.json")
         now = datetime.now(timezone.utc)
-        for notice in notices: 
-            classified = classify_notice(notice, keywords)
-            notice["is_relevant"] = classified["is_relevant"]
-            notice["matched_keywords"] = ",".join(classified["matched_keywords"]) or None
-            notice["notify_status"] = decide_notify_status(notice["published_at"], now, notice["is_relevant"])
-        inserted_count = save_notices(db_path, notices)
+
+        totals = {"fetched": 0, "rejected": 0, "inserted": 0}
+        source_errors = []
+        for source in SOURCES:
+            try:
+                result = collect_source(db_path, source, keywords, now)
+            except Exception as error:
+                source_errors.append(f"{source}: {type(error).__name__}: {error}")
+                print(f"[{SOURCES[source]['name']}] 수집 실패: {type(error).__name__}")
+                continue
+            for key in totals:
+                totals[key] += result[key]
+            print(f"[{SOURCES[source]['name']}] 수집 {result['fetched']} / 제외 {result['rejected']} / 신규 {result['inserted']}")
 
         sent_count = 0
         failed_count = 0
@@ -145,18 +167,18 @@ def main() -> None:
                 failed_count += 1
             time.sleep(1)
 
-        run["fetched_count"] = len(notices)
-        run["rejected_count"] = len(rejected)
-        run["inserted_count"] = inserted_count
-        run["status"] = "SUCCESS"     
-
+        run["fetched_count"] = totals["fetched"]
+        run["rejected_count"] = totals["rejected"]
+        run["inserted_count"] = totals["inserted"]
         run["notify_sent_count"] = sent_count
-        run["notify_failed_count"] = failed_count  
-
-        print("수집 건수:", len(notices))
-        print("제외 건수:", len(rejected))
-        print("신규 저장 건수:", inserted_count)  
+        run["notify_failed_count"] = failed_count
         print("알림 발송:", sent_count, "/ 실패:", failed_count)
+
+        if source_errors:
+            run["status"] = "PARTIAL" if len(source_errors) < len(SOURCES) else "FAILED"
+            raise RuntimeError("출처 수집 실패 - " + "; ".join(source_errors))
+
+        run["status"] = "SUCCESS"
 
     except Exception as error:
         run["error"] = f"{type(error).__name__}: {error}"
